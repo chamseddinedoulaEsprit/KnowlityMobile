@@ -1,0 +1,18 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "events",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "created_by",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "titre",
+          "order": "ASCENDING"
+        }
+      ]
+    }
+  ]
+}

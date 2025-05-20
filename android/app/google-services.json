@@ -1,0 +1,54 @@
+{
+  "project_info": {
+    "project_number": "90026882910",
+    "project_id": "knowlity-p1xygw",
+    "storage_bucket": "knowlity-p1xygw.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:90026882910:android:777437d79c341b5c1681cf",
+        "android_client_info": {
+          "package_name": "com.mycompany.knowlity"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "90026882910-oc48ug1ooe3eu56alk269sv5hkd09ms2.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.mycompany.knowlity",
+            "certificate_hash": "9bbb3186b2189ef16d8f272bdab59362c395cbb4"
+          }
+        },
+        {
+          "client_id": "90026882910-k2m981gj0icqutm3ceq11a3hgkmmvhpc.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAAwGVV2JYB7c7RDu6G5uuScXXwUg4zuxM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "90026882910-k2m981gj0icqutm3ceq11a3hgkmmvhpc.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "90026882910-5lbpbj17q924pskj5ek5virkj2s4jm9r.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.mycompany.knowlity"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
