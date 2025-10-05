@@ -1,0 +1,369 @@
+name: Build Flutter APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Update AGP version in settings.gradle (multiple patterns)
+        run: |
+          # Essayer différents patterns pour l'AGP
+          sed -i "s/8\.1\.0/8.6.0/g" android/settings.gradle || true
+          sed -i "s/8\.1\.1/8.6.0/g" android/settings.gradle || true
+          sed -i "s/8\.0\.[0-9]/8.6.0/g" android/settings.gradle || true
+          sed -i "s/7\.[0-9]\.[0-9]/8.6.0/g" android/settings.gradle || true
+
+      - name: Update AGP version in build.gradle (multiple patterns)
+        run: |
+          # Essayer différents patterns pour l'AGP
+          sed -i "s/8\.1\.0/8.6.0/g" android/build.gradle || true
+          sed -i "s/8\.1\.1/8.6.0/g" android/build.gradle || true
+          sed -i "s/8\.0\.[0-9]/8.6.0/g" android/build.gradle || true
+          sed -i "s/7\.[0-9]\.[0-9]/8.6.0/g" android/build.gradle || true
+          # Pour le format classpath dans build.gradle
+          sed -i "s/com\.android\.tools\.build:gradle:[0-9]\+\.[0-9]\+\.[0-9]\+/com.android.tools.build:gradle:8.6.0/g" android/build.gradle || true
+
+      - name: Update Kotlin version in settings.gradle (multiple patterns)
+        run: |
+          sed -i "s/1\.8\.22/2.1.0/g" android/settings.gradle || true
+          sed -i "s/1\.9\.[0-9]\+/2.1.0/g" android/settings.gradle || true
+          sed -i "s/1\.8\.[0-9]\+/2.1.0/g" android/settings.gradle || true
+
+      - name: Update Kotlin version in build.gradle (multiple patterns)
+        run: |
+          sed -i "s/1\.8\.22/2.1.0/g" android/build.gradle || true
+          sed -i "s/1\.9\.[0-9]\+/2.1.0/g" android/build.gradle || true
+          sed -i "s/1\.8\.[0-9]\+/2.1.0/g" android/build.gradle || true
+
+      - name: Fix JVM target compatibility
+        run: |
+          # Configurer gradle.properties pour forcer Java 1.8 globalement
+          GRADLE_PROPS="android/gradle.properties"
+          echo "Configuration gradle.properties pour Java 1.8..."
+          
+          # Ajouter ou modifier les propriétés JVM dans gradle.properties
+          if [ -f "$GRADLE_PROPS" ]; then
+            # Supprimer les anciennes propriétés JVM s'il y en a
+            sed -i '/org.gradle.jvmargs/d' "$GRADLE_PROPS"
+            sed -i '/kotlin.jvm.target.validation.mode/d' "$GRADLE_PROPS"
+          fi
+          
+          # Ajouter les nouvelles propriétés pour forcer Java 1.8
+          echo "" >> "$GRADLE_PROPS"
+          echo "# Force Java 1.8 compatibility" >> "$GRADLE_PROPS"
+          echo "org.gradle.jvmargs=-Dfile.encoding=UTF-8" >> "$GRADLE_PROPS"
+          echo "kotlin.jvm.target.validation.mode=ignore" >> "$GRADLE_PROPS"
+          
+          BUILD_FILE="android/build.gradle"
+          if [ -f "$BUILD_FILE" ]; then
+            echo "Correction des cibles JVM dans $BUILD_FILE..."
+            
+            # Corriger les jvmTarget existants
+            sed -i 's/jvmTarget = "11"/jvmTarget = "1.8"/g' "$BUILD_FILE"
+            sed -i 's/jvmTarget = "17"/jvmTarget = "1.8"/g' "$BUILD_FILE"
+            sed -i 's/jvmTarget = JavaVersion.VERSION_11/jvmTarget = "1.8"/g' "$BUILD_FILE"
+            sed -i 's/jvmTarget = JavaVersion.VERSION_17/jvmTarget = "1.8"/g' "$BUILD_FILE"
+            
+            # Ajouter configuration globale JVM 1.8 à la fin
+            echo "" >> "$BUILD_FILE"
+            echo "// Force Java 1.8 pour tous les projets et dépendances" >> "$BUILD_FILE"
+            echo "allprojects {" >> "$BUILD_FILE"
+            echo "    tasks.withType(JavaCompile) {" >> "$BUILD_FILE"
+            echo "        sourceCompatibility = JavaVersion.VERSION_1_8" >> "$BUILD_FILE"
+            echo "        targetCompatibility = JavaVersion.VERSION_1_8" >> "$BUILD_FILE"
+            echo "    }" >> "$BUILD_FILE"
+            echo "    tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {" >> "$BUILD_FILE"
+            echo "        kotlinOptions.jvmTarget = \"1.8\"" >> "$BUILD_FILE"
+            echo "    }" >> "$BUILD_FILE"
+            echo "}" >> "$BUILD_FILE"
+            
+            echo "Configuration globale JVM 1.8 ajoutée"
+          fi
+          
+          APP_BUILD_FILE="android/app/build.gradle"
+          if [ -f "$APP_BUILD_FILE" ]; then
+            echo "Correction des cibles JVM dans $APP_BUILD_FILE..."
+            
+            # Corriger compileOptions et kotlinOptions
+            sed -i 's/sourceCompatibility = JavaVersion.VERSION_11/sourceCompatibility = JavaVersion.VERSION_1_8/g' "$APP_BUILD_FILE"
+            sed -i 's/targetCompatibility = JavaVersion.VERSION_11/targetCompatibility = JavaVersion.VERSION_1_8/g' "$APP_BUILD_FILE"
+            sed -i 's/sourceCompatibility = JavaVersion.VERSION_17/sourceCompatibility = JavaVersion.VERSION_1_8/g' "$APP_BUILD_FILE"
+            sed -i 's/targetCompatibility = JavaVersion.VERSION_17/targetCompatibility = JavaVersion.VERSION_1_8/g' "$APP_BUILD_FILE"
+            sed -i 's/jvmTarget = JavaVersion.VERSION_11/jvmTarget = JavaVersion.VERSION_1_8/g' "$APP_BUILD_FILE"
+            sed -i 's/jvmTarget = JavaVersion.VERSION_17/jvmTarget = JavaVersion.VERSION_1_8/g' "$APP_BUILD_FILE"
+            sed -i 's/jvmTarget = "11"/jvmTarget = JavaVersion.VERSION_1_8/g' "$APP_BUILD_FILE"
+            sed -i 's/jvmTarget = "17"/jvmTarget = JavaVersion.VERSION_1_8/g' "$APP_BUILD_FILE"
+            
+            echo "Cibles JVM corrigées dans app/build.gradle"
+          fi
+
+      - name: Enable Core Library Desugaring
+        run: |
+          BUILD_FILE="android/app/build.gradle"
+          
+          if [ -f "$BUILD_FILE" ]; then
+            echo "Configuration du desugaring dans $BUILD_FILE..."
+            cp "$BUILD_FILE" "${BUILD_FILE}.backup"
+            
+            # Vérifier si desugaring est déjà configuré
+            if grep -q "coreLibraryDesugaringEnabled" "$BUILD_FILE" && grep -q "coreLibraryDesugaring" "$BUILD_FILE"; then
+              echo "Desugaring déjà configuré"
+            else
+              # Ajouter coreLibraryDesugaringEnabled dans compileOptions
+              if ! grep -q "coreLibraryDesugaringEnabled" "$BUILD_FILE"; then
+                if grep -q "compileOptions {" "$BUILD_FILE"; then
+                  sed -i '/compileOptions {/a\        coreLibraryDesugaringEnabled true' "$BUILD_FILE"
+                  echo "Ajout de coreLibraryDesugaringEnabled"
+                fi
+              fi
+              
+              # Ajouter la dépendance de desugaring - créer le bloc dependencies s'il n'existe pas
+              if ! grep -q "coreLibraryDesugaring.*desugar_jdk_libs" "$BUILD_FILE"; then
+                # Ajouter le bloc dependencies à la fin si pas présent
+                if ! grep -q "^dependencies {" "$BUILD_FILE"; then
+                  echo "" >> "$BUILD_FILE"
+                  echo "dependencies {" >> "$BUILD_FILE"
+                  echo "    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.4'" >> "$BUILD_FILE"
+                  echo "}" >> "$BUILD_FILE"
+                  echo "Bloc dependencies créé avec desugaring v2.1.4"
+                else
+                  # Ajouter dans le bloc dependencies existant
+                  sed -i '/^dependencies {/a\    coreLibraryDesugaring '\''com.android.tools:desugar_jdk_libs:2.1.4'\''' "$BUILD_FILE"
+                  echo "Dépendance desugaring v2.1.4 ajoutée"
+                fi
+              else
+                # Mettre à jour la version existante si elle est inférieure à 2.1.4
+                sed -i 's/desugar_jdk_libs:2\.0\.[0-9]/desugar_jdk_libs:2.1.4/g' "$BUILD_FILE"
+                sed -i 's/desugar_jdk_libs:2\.1\.[0-3]/desugar_jdk_libs:2.1.4/g' "$BUILD_FILE"
+                echo "Version desugaring mise à jour vers 2.1.4"
+              fi
+            fi
+          else
+            echo "Fichier $BUILD_FILE non trouvé"
+            exit 1
+          fi
+
+      - name: Verify build.gradle modifications
+        run: |
+          BUILD_FILE="android/app/build.gradle"
+          echo "=== Vérification du fichier $BUILD_FILE ==="
+          
+          if [ -f "$BUILD_FILE" ]; then
+            echo "✓ Fichier trouvé"
+            
+            # Vérifier compileOptions
+            echo ""
+            echo "=== Section compileOptions ==="
+            if grep -A 5 -B 2 "compileOptions" "$BUILD_FILE"; then
+              if grep -q "coreLibraryDesugaringEnabled.*true" "$BUILD_FILE"; then
+                echo "✓ coreLibraryDesugaringEnabled est activé"
+              else
+                echo "⚠️  coreLibraryDesugaringEnabled non trouvé ou non activé"
+              fi
+            else
+              echo "❌ Section compileOptions non trouvée"
+            fi
+            
+            # Vérifier dependencies
+            echo ""
+            echo "=== Section dependencies ==="
+            if grep -A 10 -B 2 "dependencies" "$BUILD_FILE"; then
+              if grep -q "coreLibraryDesugaring.*desugar_jdk_libs" "$BUILD_FILE"; then
+                echo "✓ Dépendance coreLibraryDesugaring trouvée"
+                DESUGAR_LINE=$(grep -n "coreLibraryDesugaring.*desugar_jdk_libs" "$BUILD_FILE")
+                echo "$DESUGAR_LINE"
+                # Vérifier la version
+                if grep -q "desugar_jdk_libs:2\.1\.4" "$BUILD_FILE"; then
+                  echo "✅ Version 2.1.4 confirmée (requis par flutter_local_notifications)"
+                elif grep -q "desugar_jdk_libs:2\.[2-9]\." "$BUILD_FILE"; then
+                  echo "✅ Version supérieure à 2.1.4 détectée"
+                else
+                  echo "⚠️  Version potentiellement insuffisante (requis: 2.1.4+)"
+                fi
+              else
+                echo "❌ Dépendance coreLibraryDesugaring non trouvée"
+              fi
+            else
+              echo "❌ Section dependencies non trouvée"
+            fi
+            
+            # Résumé final
+            echo ""
+            echo "=== Résumé de la configuration desugaring ==="
+            DESUGARING_ENABLED=$(grep -c "coreLibraryDesugaringEnabled.*true" "$BUILD_FILE" || echo "0")
+            DESUGARING_DEP=$(grep -c "coreLibraryDesugaring.*desugar_jdk_libs" "$BUILD_FILE" || echo "0")
+            
+            if [ "$DESUGARING_ENABLED" -gt 0 ] && [ "$DESUGARING_DEP" -gt 0 ]; then
+              echo "✅ Configuration desugaring COMPLÈTE"
+            elif [ "$DESUGARING_ENABLED" -gt 0 ]; then
+              echo "⚠️  Desugaring activé mais dépendance manquante"
+            elif [ "$DESUGARING_DEP" -gt 0 ]; then
+              echo "⚠️  Dépendance présente mais desugaring non activé"
+            else
+              echo "❌ Configuration desugaring INCOMPLÈTE"
+            fi
+            
+            # Vérification des cibles JVM
+            echo ""
+            echo "=== Vérification des cibles JVM ==="
+            
+            # Vérifier compileOptions Java version
+            if grep -q "sourceCompatibility.*VERSION_1_8\|targetCompatibility.*VERSION_1_8" "$BUILD_FILE"; then
+              echo "✅ Java compile options configuré pour 1.8"
+            else
+              echo "⚠️  Java compile options - vérifier la configuration"
+              grep -n "sourceCompatibility\|targetCompatibility" "$BUILD_FILE" || echo "Pas de configuration trouvée"
+            fi
+            
+            # Vérifier kotlinOptions JVM target
+            if grep -q "jvmTarget.*VERSION_1_8\|jvmTarget.*1\.8" "$BUILD_FILE"; then
+              echo "✅ Kotlin JVM target configuré pour 1.8"
+            else
+              echo "⚠️  Kotlin JVM target - vérifier la configuration"
+              grep -n "jvmTarget" "$BUILD_FILE" || echo "Pas de configuration trouvée"
+            fi
+            
+          else
+            echo "❌ Fichier $BUILD_FILE non trouvé"
+          fi
+          
+          # Vérifier aussi android/build.gradle pour la cohérence
+          ROOT_BUILD_FILE="android/build.gradle"
+          if [ -f "$ROOT_BUILD_FILE" ]; then
+            echo ""
+            echo "=== Vérification JVM dans $ROOT_BUILD_FILE ==="
+            if grep -q 'jvmTarget = "1.8"' "$ROOT_BUILD_FILE"; then
+              echo "✅ JVM target 1.8 configuré dans build.gradle racine"
+            else
+              echo "⚠️  JVM target dans build.gradle racine:"
+              grep -n "jvmTarget" "$ROOT_BUILD_FILE" || echo "Pas de configuration trouvée"
+            fi
+          fi
+
+      - name: Setup Java (for keystore handling)
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Decode Keystore
+        run: |
+          # Vérifier si le secret KEYSTORE existe
+          if [ -n "${{ secrets.KEYSTORE }}" ]; then
+            echo "Décodage du keystore..."
+            echo "${{ secrets.KEYSTORE }}" | base64 --decode > android/app/upload-keystore.jks
+            
+            # Vérifier que le fichier a été créé correctement
+            if [ -f "android/app/upload-keystore.jks" ]; then
+              echo "✅ Keystore décodé avec succès"
+              ls -la android/app/upload-keystore.jks
+            else
+              echo "❌ Échec du décodage du keystore"
+              exit 1
+            fi
+          else
+            echo "⚠️ Secret KEYSTORE non configuré - construction en mode debug"
+            # Créer un keystore temporaire pour debug si pas de secret
+            keytool -genkey -v -keystore android/app/debug-keystore.jks \
+              -keyalg RSA -keysize 2048 -validity 10000 \
+              -alias debugkey -storepass android -keypass android \
+              -dname "CN=Debug,OU=Debug,O=Debug,L=Debug,ST=Debug,C=US"
+            echo "✅ Keystore debug créé"
+          fi
+
+      - name: Create key.properties
+        run: |
+          if [ -n "${{ secrets.KEYSTORE }}" ]; then
+            # Mode release avec keystore signé
+            cat <<EOF > android/key.properties
+          storePassword=${{ secrets.STORE_PASSWORD }}
+          keyPassword=${{ secrets.KEY_PASSWORD }}
+          keyAlias=${{ secrets.KEY_ALIAS }}
+          storeFile=../app/upload-keystore.jks
+          EOF
+            echo "✅ Configuration release keystore créée"
+          else
+            # Mode debug
+            cat <<EOF > android/key.properties
+          storePassword=android
+          keyPassword=android
+          keyAlias=debugkey
+          storeFile=../app/debug-keystore.jks
+          EOF
+            echo "✅ Configuration debug keystore créée"
+          fi
+          
+          # Afficher le contenu pour debug (sans les mots de passe)
+          echo "=== Configuration keystore ==="
+          grep -v Password android/key.properties || echo "Fichier key.properties vide"
+
+      - name: Validate Keystore
+        run: |
+          # Valider le keystore avant la construction
+          KEY_PROPERTIES="android/key.properties"
+          if [ -f "$KEY_PROPERTIES" ]; then
+            # Lire les propriétés du keystore
+            STORE_FILE=$(grep "storeFile=" "$KEY_PROPERTIES" | cut -d'=' -f2)
+            STORE_ALIAS=$(grep "keyAlias=" "$KEY_PROPERTIES" | cut -d'=' -f2)
+            
+            # Construire le chemin complet du keystore
+            if [[ "$STORE_FILE" == "../app/"* ]]; then
+              KEYSTORE_PATH="android/app/$(basename $STORE_FILE)"
+            else
+              KEYSTORE_PATH="android/$STORE_FILE"
+            fi
+            
+            echo "Validation du keystore: $KEYSTORE_PATH"
+            
+            if [ -f "$KEYSTORE_PATH" ]; then
+              # Tenter de lister les entrées du keystore pour valider
+              echo "✅ Fichier keystore trouvé"
+              file "$KEYSTORE_PATH" || echo "Type de fichier non déterminé"
+              
+              # Vérifier la taille du fichier
+              SIZE=$(wc -c < "$KEYSTORE_PATH")
+              echo "Taille du keystore: $SIZE bytes"
+              
+              if [ "$SIZE" -gt 100 ]; then
+                echo "✅ Taille du keystore semble valide"
+              else
+                echo "⚠️ Keystore semble trop petit, possible erreur de décodage"
+              fi
+            else
+              echo "❌ Fichier keystore non trouvé: $KEYSTORE_PATH"
+              exit 1
+            fi
+          else
+            echo "❌ Fichier key.properties non trouvé"
+            exit 1
+          fi
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          architecture: 'x64'
+
+      - name: Clear Flutter cache
+        run: flutter clean
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build APK
+        run: flutter build apk --release --android-skip-build-dependency-validation
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-release.apk
+          path: build/app/outputs/flutter-apk/app-release.apk
