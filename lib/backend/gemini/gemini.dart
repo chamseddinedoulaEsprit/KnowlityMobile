@@ -5,7 +5,10 @@ import 'dart:typed_data';
 import 'package:http/http.dart' as http;
 import '/flutter_flow/flutter_flow_util.dart';
 
-const _kGeminiApiKey = 'AIzaSyDcpIha11Ub9aUZm-tQXveP4fSQUPSZpOs';
+// IMPORTANT: Ne laissez pas de clés API en dur dans le code source.
+// Chargez la clé depuis des variables d'environnement, Firebase Remote Config,
+// ou un service de secrets sécurisé.
+const _kGeminiApiKey = '<VOTRE_CLE_GEMINI>'; // TODO: remplacer
 
 Future<String?> geminiGenerateText(
   BuildContext context,

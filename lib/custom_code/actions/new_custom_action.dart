@@ -1,4 +1,5 @@
 // Automatic FlutterFlow imports
+// Automatic FlutterFlow imports
 import '/backend/backend.dart';
 import '/backend/schema/structs/index.dart';
 import '/flutter_flow/flutter_flow_theme.dart';
@@ -15,13 +16,14 @@ import 'package:pdf/widgets.dart' as pw;
 
 import 'dart:io' as io;
 import 'package:path_provider/path_provider.dart';
-import 'dart:html' as html; // Web uniquement
+
+// Conditional import for web-only APIs
+// Create a small wrapper to avoid importing dart:html on non-web platforms.
+// Note: if you need more complex web interop, create `web_helper.dart` with
+// conditional imports: `web_helper_stub.dart` and `web_helper_web.dart`.
+import 'web_helper_stub.dart' if (dart.library.html) 'web_helper_web.dart';
 
 /// Génère un PDF avec un titre principal, et une liste de questions avec titre + description.
-/// - [title] : le titre général du quiz
-/// - [questionsTitles] : liste des titres des questions (ex: "Question 1")
-/// - [questionsDescriptions] : liste des descriptions des questions (ex: "Quelle est la capitale...")
-
 Future<String> newCustomAction(
   String title,
   List<String> questionsTitles,
@@ -63,12 +65,8 @@ Future<String> newCustomAction(
   final Uint8List bytes = await pdf.save();
 
   if (kIsWeb) {
-    final blob = html.Blob([bytes]);
-    final url = html.Url.createObjectUrlFromBlob(blob);
-    final anchor = html.AnchorElement(href: url)
-      ..setAttribute("download", "$title.pdf")
-      ..click();
-    html.Url.revokeObjectUrl(url);
+    // Use web helper to trigger download without importing dart:html here.
+    WebHelper.downloadBytesAsFile(bytes, '$title.pdf');
     return 'Téléchargement lancé dans le navigateur';
   } else {
     final dir = await getTemporaryDirectory();
@@ -77,3 +75,4 @@ Future<String> newCustomAction(
     return file.path;
   }
 }
+  }

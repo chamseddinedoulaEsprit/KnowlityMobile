@@ -17,7 +17,7 @@ import 'package:pdf/widgets.dart' as pw;
 
 import 'dart:io' as io;
 import 'package:path_provider/path_provider.dart';
-import 'dart:html' as html; // Web uniquement
+import 'web_helper_stub.dart' if (dart.library.html) 'web_helper_web.dart';
 
 Future<String> newCustomActionCopy(
   String quizTitle,
@@ -88,12 +88,7 @@ Future<String> newCustomActionCopy(
       userName.replaceAll(RegExp(r'[^\w\s]'), '').replaceAll(' ', '_');
 
   if (kIsWeb) {
-    final blob = html.Blob([bytes]);
-    final url = html.Url.createObjectUrlFromBlob(blob);
-    final anchor = html.AnchorElement(href: url)
-      ..setAttribute("download", "Certificat_$safeUserName.pdf")
-      ..click();
-    html.Url.revokeObjectUrl(url);
+    WebHelper.downloadBytesAsFile(bytes, 'Certificat_$safeUserName.pdf');
     return 'Téléchargement lancé dans le navigateur';
   } else {
     final dir = await getTemporaryDirectory();
