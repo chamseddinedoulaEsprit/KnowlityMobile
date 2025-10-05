@@ -356,11 +356,56 @@ jobs:
       - name: Clear Flutter cache
         run: flutter clean
 
+      - name: Fix pubspec dependencies conflicts
+        run: |
+          echo "Résolution des conflits de dépendances..."
+          # Forcer la mise à jour des dépendances pour résoudre les conflits de version
+          flutter pub upgrade --major-versions || echo "Upgrade failed, trying alternative approach"
+          
+          # Si l'upgrade échoue, essayer pub get avec force resolve
+          if ! flutter pub get; then
+            echo "pub get failed, trying to fix collection version conflict..."
+            # Modifier temporairement pubspec.yaml pour forcer une version compatible
+            if grep -q "collection:" pubspec.yaml; then
+              sed -i 's/collection: [0-9.]\+/collection: ^1.19.1/' pubspec.yaml
+            else
+              # Ajouter collection si pas présent
+              echo "  collection: ^1.19.1" >> pubspec.yaml
+            fi
+            flutter pub get
+          fi
+
       - name: Install dependencies
         run: flutter pub get
 
+      - name: Validate Flutter installation
+        run: |
+          echo "=== Validation de l'installation Flutter ==="
+          flutter doctor -v
+          echo ""
+          echo "=== Vérification des dépendances ==="
+          flutter pub deps
+          echo ""
+          echo "=== Analyse statique du code ==="
+          flutter analyze --no-fatal-infos || echo "Analyse terminée avec des warnings (non bloquant)"
+
       - name: Build APK
-        run: flutter build apk --release --android-skip-build-dependency-validation
+        run: |
+          echo "=== Construction de l'APK ==="
+          flutter build apk --release --android-skip-build-dependency-validation --verbose
+          
+          # Vérifier que l'APK a été créé
+          if [ -f "build/app/outputs/flutter-apk/app-release.apk" ]; then
+            echo "✅ APK créé avec succès"
+            ls -la build/app/outputs/flutter-apk/app-release.apk
+            # Afficher la taille du fichier
+            SIZE=$(wc -c < "build/app/outputs/flutter-apk/app-release.apk")
+            echo "Taille de l'APK: $(echo $SIZE | numfmt --to=iec) ($SIZE bytes)"
+          else
+            echo "❌ APK non trouvé"
+            ls -la build/app/outputs/flutter-apk/ || echo "Répertoire de sortie non trouvé"
+            exit 1
+          fi
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
