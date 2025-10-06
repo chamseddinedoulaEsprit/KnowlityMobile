@@ -1,0 +1,70 @@
+name: Debug Flutter Build
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - debug-ci
+
+jobs:
+  debug:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+      
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+      
+      - name: Setup Flutter (simple)
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+      
+      - name: Basic Flutter test
+        run: |
+          echo "=== Test Flutter de base ==="
+          flutter --version
+          flutter doctor
+          
+      - name: Test commands one by one
+        run: |
+          echo "=== Test commande par commande ==="
+          
+          echo "1. Flutter config basic"
+          flutter config --no-analytics || echo "Config failed"
+          
+          echo "2. Flutter doctor"
+          flutter doctor -v || echo "Doctor failed"
+          
+          echo "3. Flutter clean"
+          flutter clean || echo "Clean failed"
+          
+          echo "4. Flutter pub get"
+          flutter pub get || echo "Pub get failed"
+          
+          echo "5. Flutter analyze (basic)"
+          flutter analyze lib/main.dart || echo "Analyze failed"
+          
+      - name: Identify exact failing command
+        run: |
+          echo "=== Test des commandes susceptibles d'échouer ==="
+          
+          # Test chaque option de config séparément
+          echo "Test: flutter config options"
+          flutter config --help || echo "Config help failed"
+          
+          # Test des commandes de build de base
+          echo "Test: flutter build help"
+          flutter build --help || echo "Build help failed"
+          
+          echo "Test: flutter build apk help"
+          flutter build apk --help || echo "Build apk help failed"
+          
+          # Test minimal de compilation
+          echo "Test: compilation minimale"
+          flutter analyze --version || echo "Analyze version failed"

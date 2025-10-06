@@ -352,6 +352,28 @@ jobs:
         with:
           channel: 'stable'
           architecture: 'x64'
+          cache: true
+
+      - name: Configure Flutter settings
+        run: |
+          echo "=== Configuration Flutter initiale ==="
+          
+          # Désactiver l'analytics pour éviter les prompts
+          flutter config --no-analytics
+          
+          # Configurer Flutter pour CI/CD
+          flutter config --enable-web
+          flutter config --enable-android
+          
+          # Vérifier la configuration
+          echo ""
+          echo "=== Configuration Flutter actuelle ==="
+          flutter config
+          
+          echo ""
+          echo "=== Validation Flutter ==="
+          flutter --version
+          flutter doctor --version
 
       - name: Setup Android environment
         run: |
@@ -399,29 +421,85 @@ jobs:
           echo "✅ Configuration Gradle globale créée"
 
       - name: Clear Flutter cache
-        run: flutter clean
+        run: |
+          echo "=== Nettoyage complet des caches ==="
+          
+          # Nettoyer Flutter
+          flutter clean
+          
+          # Nettoyer les caches Dart/Flutter
+          flutter pub cache clean || echo "Cache clean failed"
+          
+          # Nettoyer Gradle
+          if [ -f "android/gradlew" ]; then
+            cd android
+            ./gradlew clean || echo "Gradle clean failed"
+            cd ..
+          fi
+          
+          # Supprimer les dossiers de build existants
+          rm -rf build/
+          rm -rf android/app/build/
+          rm -rf android/.gradle/
+          
+          echo "✅ Nettoyage terminé"
 
       - name: Fix pubspec dependencies conflicts
         run: |
-          echo "Résolution des conflits de dépendances..."
-          # Forcer la mise à jour des dépendances pour résoudre les conflits de version
-          flutter pub upgrade --major-versions || echo "Upgrade failed, trying alternative approach"
+          echo "=== Résolution des conflits de dépendances ==="
           
-          # Si l'upgrade échoue, essayer pub get avec force resolve
-          if ! flutter pub get; then
-            echo "pub get failed, trying to fix collection version conflict..."
-            # Modifier temporairement pubspec.yaml pour forcer une version compatible
-            if grep -q "collection:" pubspec.yaml; then
-              sed -i 's/collection: [0-9.]\+/collection: ^1.19.1/' pubspec.yaml
+          # Sauvegarder pubspec.yaml original
+          cp pubspec.yaml pubspec.yaml.backup
+          
+          echo "Tentative 1: upgrade standard..."
+          if flutter pub upgrade --major-versions; then
+            echo "✅ Upgrade réussi"
+          else
+            echo "⚠️ Upgrade échoué, essai get standard..."
+            if flutter pub get; then
+              echo "✅ Get réussi"
             else
-              # Ajouter collection si pas présent
-              echo "  collection: ^1.19.1" >> pubspec.yaml
+              echo "❌ Get échoué, correction manuelle..."
+              
+              # Restaurer le backup et essayer des corrections spécifiques
+              cp pubspec.yaml.backup pubspec.yaml
+              
+              # Corrections connues pour FlutterFlow
+              echo "Correction des dépendances Flutter Flow..."
+              
+              # Si collection est présent, le corriger
+              if grep -q "collection:" pubspec.yaml; then
+                sed -i 's/collection: [^#]*/collection: ^1.19.1 /' pubspec.yaml
+                echo "✓ Collection corrigé"
+              fi
+              
+              # Essayer get après corrections
+              if flutter pub get; then
+                echo "✅ Get réussi après corrections"
+              else
+                echo "❌ Échec total des dépendances"
+                exit 1
+              fi
             fi
-            flutter pub get
           fi
+          
+          echo ""
+          echo "=== Vérification des dépendances finales ==="
+          flutter pub deps --style=compact
 
       - name: Install dependencies
-        run: flutter pub get
+        run: |
+          echo "=== Installation des dépendances ==="
+          flutter pub get
+          
+          echo ""
+          echo "=== Vérification post-installation ==="
+          flutter pub deps --style=compact | head -20
+          
+          echo ""
+          echo "=== Test compilation de base ==="
+          # Test simple pour vérifier que le code compile
+          timeout 60 flutter analyze --no-fatal-infos lib/main.dart || echo "Analyse main.dart échouée"
 
       - name: Fix API key placeholders for CI build
         run: |
@@ -463,15 +541,24 @@ jobs:
         run: |
           echo "=== Validation de l'installation Flutter ==="
           flutter doctor -v
+          
+          echo ""
+          echo "=== Test de commandes Flutter de base ==="
+          flutter --help || echo "Help command failed"
+          flutter config || echo "Config command failed"
+          
           echo ""
           echo "=== Vérification des dépendances ==="
-          flutter pub deps
+          flutter pub deps --style=compact || echo "Deps command failed"
+          
           echo ""
           echo "=== Analyse statique du code ==="
           flutter analyze --no-fatal-infos || echo "Analyse terminée avec des warnings (non bloquant)"
+          
           echo ""
           echo "=== Test de build préliminaire (debug) ==="
-          flutter build apk --debug --target-platform android-arm64 --verbose || echo "Build debug échoué - continuons avec release"
+          # Test avec options simplifiées
+          timeout 300 flutter build apk --debug --verbose || echo "Build debug échoué - continuons avec release"
 
       - name: Build APK
         run: |
@@ -495,15 +582,25 @@ jobs:
           echo "=== Tentative de build avec diagnostic étendu ==="
           set -e  # Arrêter sur la première erreur
           
-          # Build avec options de debug étendues
-          flutter build apk --release \
-            --verbose \
-            --android-skip-build-dependency-validation \
-            --dart-define=FLUTTER_WEB_AUTO_DETECT=true \
-            --target-platform android-arm64,android-arm,android-x64 || {
+          # Build avec options simplifiées d'abord, puis plus complexes si nécessaire
+          echo "Tentative 1: Build simple..."
+          if ! flutter build apk --release --verbose; then
+            echo ""
+            echo "Tentative 2: Build avec options avancées..."
+            flutter build apk --release \
+              --verbose \
+              --no-tree-shake-icons \
+              --target-platform android-arm64 || {
             
             echo ""
-            echo "❌ Build échoué - Diagnostic détaillé:"
+            echo "Tentative 3: Build avec validation désactivée..."
+            flutter build apk --release \
+              --verbose \
+              --no-tree-shake-icons \
+              --no-shrink || {
+              
+              echo ""
+              echo "❌ Toutes les tentatives de build ont échoué - Diagnostic détaillé:"
             echo ""
             echo "=== Logs Gradle ==="
             cat android/app/build/outputs/logs/manifest_merger.log 2>/dev/null || echo "Pas de logs manifest merger"
@@ -526,7 +623,9 @@ jobs:
             flutter config
             
             exit 1
-          }
+            }
+            }
+          fi
           
           # Vérifier que l'APK a été créé
           echo ""
