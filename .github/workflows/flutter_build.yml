@@ -353,6 +353,51 @@ jobs:
           channel: 'stable'
           architecture: 'x64'
 
+      - name: Setup Android environment
+        run: |
+          echo "=== Configuration de l'environnement Android ==="
+          
+          # Installer SDK Android si nécessaire
+          if [ -z "$ANDROID_HOME" ]; then
+            echo "ANDROID_HOME non défini, configuration par défaut..."
+            export ANDROID_HOME=$HOME/android-sdk
+            export PATH=$PATH:$ANDROID_HOME/tools:$ANDROID_HOME/platform-tools
+          fi
+          
+          echo "ANDROID_HOME: $ANDROID_HOME"
+          
+          # Accepter les licences Android
+          echo "Acceptation des licences Android SDK..."
+          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses 2>/dev/null || echo "Licenses already accepted or sdkmanager not found"
+          
+          # Vérifier les outils Android disponibles
+          echo ""
+          echo "=== Outils Android disponibles ==="
+          which adb || echo "adb non trouvé"
+          which aapt || echo "aapt non trouvé"
+          ls -la $ANDROID_HOME/build-tools/ 2>/dev/null | head -5 || echo "build-tools non trouvé"
+          
+          # Permissions sur gradlew
+          echo ""
+          echo "=== Configuration Gradle ==="
+          if [ -f "android/gradlew" ]; then
+            chmod +x android/gradlew
+            echo "✅ Permissions gradlew configurées"
+            ./android/gradlew --version || echo "Gradle wrapper non fonctionnel"
+          else
+            echo "⚠️ gradlew non trouvé"
+          fi
+          
+          # Configuration globale Gradle pour éviter les timeouts
+          mkdir -p ~/.gradle
+          cat > ~/.gradle/gradle.properties << EOF
+          org.gradle.daemon=true
+          org.gradle.parallel=true
+          org.gradle.configureondemand=true
+          org.gradle.jvmargs=-Xmx4g -XX:MaxPermSize=512m -XX:+HeapDumpOnOutOfMemoryError -Dfile.encoding=UTF-8
+          EOF
+          echo "✅ Configuration Gradle globale créée"
+
       - name: Clear Flutter cache
         run: flutter clean
 
@@ -378,6 +423,42 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
+      - name: Fix API key placeholders for CI build
+        run: |
+          echo "=== Configuration des clés API pour CI ==="
+          
+          # Remplacer les placeholders par des valeurs de test pour éviter les erreurs de build
+          echo "Remplacement des placeholders API..."
+          
+          # Actions personnalisées
+          find lib/custom_code/actions/ -name "*.dart" -type f | while read file; do
+            if grep -q "<VOTRE_CLE_" "$file"; then
+              echo "Correction de $file"
+              sed -i 's/<VOTRE_CLE_API_OPENROUTER>/test_openrouter_key/g' "$file"
+              sed -i 's/<VOTRE_CLE_API_GOOGLE>/test_google_key/g' "$file"
+              sed -i 's/<VOTRE_CLE_RESEND>/test_resend_key/g' "$file"
+            fi
+          done
+          
+          # Backend Gemini
+          if [ -f "lib/backend/gemini/gemini.dart" ]; then
+            echo "Correction de lib/backend/gemini/gemini.dart"
+            sed -i 's/<VOTRE_CLE_GEMINI>/test_gemini_key/g' lib/backend/gemini/gemini.dart
+          fi
+          
+          # Firebase config
+          if [ -f "lib/backend/firebase/firebase_config.dart" ]; then
+            echo "Correction de lib/backend/firebase/firebase_config.dart"
+            sed -i 's/<VOTRE_API_KEY_FIREBASE>/test_firebase_key/g' lib/backend/firebase/firebase_config.dart
+          fi
+          
+          echo "✅ Placeholders remplacés par des valeurs de test pour CI"
+          
+          # Vérifier qu'il ne reste plus de placeholders
+          echo ""
+          echo "=== Vérification des placeholders restants ==="
+          grep -r "<VOTRE_" lib/ && echo "⚠️ Placeholders restants trouvés" || echo "✅ Tous les placeholders ont été remplacés"
+
       - name: Validate Flutter installation
         run: |
           echo "=== Validation de l'installation Flutter ==="
@@ -388,22 +469,88 @@ jobs:
           echo ""
           echo "=== Analyse statique du code ==="
           flutter analyze --no-fatal-infos || echo "Analyse terminée avec des warnings (non bloquant)"
+          echo ""
+          echo "=== Test de build préliminaire (debug) ==="
+          flutter build apk --debug --target-platform android-arm64 --verbose || echo "Build debug échoué - continuons avec release"
 
       - name: Build APK
         run: |
           echo "=== Construction de l'APK ==="
-          flutter build apk --release --android-skip-build-dependency-validation --verbose
+          
+          # Diagnostic pré-build
+          echo "=== Diagnostic pré-build ==="
+          echo "Flutter version:"
+          flutter --version
+          echo ""
+          echo "Gradle wrapper permissions:"
+          chmod +x android/gradlew || echo "chmod failed"
+          ls -la android/gradlew || echo "gradlew not found"
+          echo ""
+          echo "Android SDK info:"
+          echo $ANDROID_HOME
+          ls -la $ANDROID_HOME/platforms/ 2>/dev/null || echo "Android platforms not found"
+          
+          # Essayer d'abord un build avec plus d'options de diagnostic
+          echo ""
+          echo "=== Tentative de build avec diagnostic étendu ==="
+          set -e  # Arrêter sur la première erreur
+          
+          # Build avec options de debug étendues
+          flutter build apk --release \
+            --verbose \
+            --android-skip-build-dependency-validation \
+            --dart-define=FLUTTER_WEB_AUTO_DETECT=true \
+            --target-platform android-arm64,android-arm,android-x64 || {
+            
+            echo ""
+            echo "❌ Build échoué - Diagnostic détaillé:"
+            echo ""
+            echo "=== Logs Gradle ==="
+            cat android/app/build/outputs/logs/manifest_merger.log 2>/dev/null || echo "Pas de logs manifest merger"
+            
+            echo ""
+            echo "=== Vérification build.gradle ==="
+            cat android/app/build.gradle | grep -A 5 -B 5 "compileSdk\|targetSdk\|minSdk" || echo "SDK versions non trouvées"
+            
+            echo ""
+            echo "=== Erreurs Gradle récentes ==="
+            find . -name "*.log" -exec grep -l "FAILED\|ERROR\|Exception" {} \; 2>/dev/null | head -5 | xargs cat || echo "Pas de logs d'erreur trouvés"
+            
+            echo ""
+            echo "=== Répertoires de build ==="
+            find build/ -name "*.apk" 2>/dev/null || echo "Aucun APK trouvé"
+            ls -la build/app/outputs/ 2>/dev/null || echo "Répertoire outputs non trouvé"
+            
+            echo ""
+            echo "=== Configuration Dart/Flutter ==="
+            flutter config
+            
+            exit 1
+          }
           
           # Vérifier que l'APK a été créé
+          echo ""
+          echo "=== Vérification de l'APK ==="
           if [ -f "build/app/outputs/flutter-apk/app-release.apk" ]; then
             echo "✅ APK créé avec succès"
             ls -la build/app/outputs/flutter-apk/app-release.apk
             # Afficher la taille du fichier
             SIZE=$(wc -c < "build/app/outputs/flutter-apk/app-release.apk")
             echo "Taille de l'APK: $(echo $SIZE | numfmt --to=iec) ($SIZE bytes)"
+            
+            # Informations supplémentaires sur l'APK
+            echo ""
+            echo "=== Contenu du répertoire build ==="
+            find build/app/outputs/ -name "*.apk" -exec ls -la {} \;
+            
           else
-            echo "❌ APK non trouvé"
-            ls -la build/app/outputs/flutter-apk/ || echo "Répertoire de sortie non trouvé"
+            echo "❌ APK non trouvé dans le répertoire attendu"
+            echo ""
+            echo "=== Recherche d'APK alternatifs ==="
+            find . -name "*.apk" -exec ls -la {} \; || echo "Aucun APK trouvé nulle part"
+            echo ""
+            echo "=== Structure du répertoire build ==="
+            ls -la build/app/outputs/ || echo "Répertoire outputs non trouvé"
             exit 1
           fi
 

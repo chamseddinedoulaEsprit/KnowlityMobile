@@ -49,6 +49,14 @@ flutter pub get
 
 4. **Configuration des clés API** (voir section Sécurité)
 
+### 🚨 Résolution des Problèmes CI/CD
+
+Pour les erreurs de build GitHub Actions, consultez le **[Guide de Troubleshooting CI/CD](CI_CD_TROUBLESHOOTING.md)** qui contient :
+- Solutions aux erreurs "exit code 1"
+- Configuration des secrets GitHub
+- Debug du workflow
+- Optimisations de performance
+
 ---
 
 ## 🔧 Corrections et Améliorations Récentes
